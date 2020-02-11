@@ -20,5 +20,5 @@
 > * mean: mean value of error at given pixel.
 >
 > ### Results Preview for Landsat 8
-> ![](analysis/code/graphics/L8_4433.png)
+> ![](analysis/code/graphics/4433.png)
 > ![](analysis/code/graphics/L8_4433_results.png)
