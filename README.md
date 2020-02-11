@@ -13,12 +13,12 @@
 >
 >
 > ### Attribute Information:
-> The data analysed here contains the following information is .csv format:
+> The data analyzed here contains the following information is .csv format:
 > * fid: field id at given pixel.
 > * count: number of occurrences of field with corresponding id.
 > * area: area in square meters of field corresponding id.
 > * mean: mean value of error at given pixel.
 >
 > ### Results Preview for Landsat 8
-> ![](analysis/code/graphics/4433.png)
+> ![](analysis/code/graphics/4433.PNG)
 > ![](analysis/code/graphics/L8_4433_results.png)
