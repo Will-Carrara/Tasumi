@@ -1,0 +1,821 @@
+---
+title: "Tasumi Atmospheric Correction Analysis"
+author: "Will Carrara"
+date: "12/01/2019"
+output: 
+  bookdown::html_document2
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+<script src="utilities/js/functions.js"> </script>
+<link rel="stylesheet" type="text/css" href="utilities/css/style.css">
+
+***
+### Abstract {-}
+
+Satellite mapping of crop canopy conditions and irrigation requirements have been shown to have a high potential to support improvements in irrigation management and increases in on-farm water use efficiency of as much as 20-40% (Johnson et al., 2016). However, operational use of satellite data for irrigation management requires low latency, high accuracy, and consistency across observations from multiple satellites. Atmospheric correction based on radiative transfer algorithms provides high accuracy, but requires multiple ancillary data inputs, making it difficult to consistently provide surface reflectances within 24-48 hours of satellite overpass. Simple empirical atmospheric correction methods such as dark object subtraction allow for quick image normalization, but are difficult to fully automate. To overcome the limitations of current approaches for near real-time agricultural applications, we explore the accuracy of a simplified atmospheric correction approach. In this analysis, we will assess the Tasumi Atmospheric Correction Algorithm (Tasumi et al., 2008). Our initial analyses focused on the red and near-infrared bands and calculation of the Normalized Difference Vegetation Index (NDVI). Results are compared against USGS Landsat Collection 1 Tier 1 surface reflectances.
+
+TACA provides a rapid, operational method for estimating at-surface reflectances, using atmospheric correction functions developed to require only general humidity data and a digital elevation model (Tasumi et al., 2008). These functions have a reduced structure to increase their operational applicability in routine calculation of instantaneous surface energy balances and to calculate NDVI values. This surface reflectance derivation procedure has been developed primarily for use with Landsat imagery, but additional analysis and preliminary testing has been conducted on Sentinel-2A and 2B imagery. We present initial results below for analyses conducted with Landsat 5, 7, 8, and Sentinel-2 data. To date, comparisons have been conducted for surface reflectances calculated using the TACA model against USGS Tier 1 Landsat surface reflectance data available for multiple Landsat scenes in California. Research currently indicates that use of the TACA approach results in NDVI values calculated from the red and near infrared bands are within .01 to .03 (4.99% to 8.71%) on average of the NDVI values calculated from the USGS Tier 1 surface reflectance values.
+
+Resources: [At-Surface Reflectance and Albedo from Satellite for Operational Calculation of Land Surface Energy Balance](https://www.researchgate.net/profile/Ricardo_Trezza/publication/200041998_At-Surface_Reflectance_and_Albedo_from_Satellite_for_Operational_Calculation_of_Land_Surface_Energy_Balance/links/00b7d52052a4dd5454000000/At-Surface-Reflectance-and-Albedo-from-Satellite-for-Operational-Calculation-of-Land-Surface-Energy-Balance.pdf)
+
+***
+### Data Sources {-}
+
+***Landsat 5*** 
+
+[Input data](https://developers.google.com/earth-engine/datasets/catalog/LANDSAT_LT05_C01_T1_TOA): Landsat 5 TM Collection 1 Tier 1 calibrated top-of-atmosphere reflectance for 2010.
+
+[Reference data](https://developers.google.com/earth-engine/datasets/catalog/LANDSAT_LT05_C01_T1_SR): Atmospherically corrected surface reflectance from the Landsat 5 ETM sensor using LEDAPS for 2010.
+
+***Landsat 7*** 
+
+[Input data](https://developers.google.com/earth-engine/datasets/catalog/LANDSAT_LE07_C01_T1_TOA): Landsat 7 Collection 1 Tier 1 calibrated top-of-atmosphere reflectance for 2013.
+
+[Reference data](https://developers.google.com/earth-engine/datasets/catalog/LANDSAT_LE07_C01_T1_SR): This dataset is the atmospherically corrected surface reflectance from the Landsat 7 ETM+ sensor using LEDAPS for 2013.
+
+***Landsat 8*** 
+
+[Input data](https://developers.google.com/earth-engine/datasets/catalog/LANDSAT_LC08_C01_T1_TOA): Landsat 8 Collection 1 Tier 1 calibrated top-of-atmosphere reflectance for 2016.
+
+[Reference data](https://developers.google.com/earth-engine/datasets/catalog/LANDSAT_LC08_C01_T1_SR): This dataset is the atmospherically corrected surface reflectance from the Landsat 8 OLI/TIRS sensors using LEDAPS for 2016.
+
+***Sentinel-2A*** 
+
+[Input data](https://developers.google.com/earth-engine/datasets/catalog/COPERNICUS_S2): This dataset contain 13 UINT16 spectral bands representing  top-of-atmosphere reflectance scaled by 10000 for 2018.
+
+[Reference data](https://hls.gsfc.nasa.gov/data/): From the Harmonized Landsat-Sentinel project (HLS) this dataset contains the Sentinel-2a MSI harmonized surface reflectance resampled at 30m over the Sentinel-2 tiling system for 2018.
+
+
+***
+### Attribute Information {-}
+
+The data analysed contains the following information in .csv format: 
+
+***Schema:***
+
+1. **fid:** field id at given pixel.
+2. **count:** number of occurrences of field with corresponding id.
+3. **area:** area in square meters of field corresponding id.
+4. **mean:** mean value of error at given pixel.
+
+Post-processed with ArcGIS, this data contains percentages with precision to seven decimal places. For the purposes of this analysis, these values have been rounded down to only include only two significant figures past the decimal. For anomalous observations the absolute value of any percentage greater than 100 was removed. This served to eliminate any erroneous data which would significantly alter the mean.
+
+```{r, echo=FALSE}
+process = function (path, diff=FALSE) {
+  data = read.csv(path, header=TRUE)
+  
+  data[,1] = NULL
+  names(data) = c("fid", "count", "area", "mean")
+  
+  if (diff==FALSE) {
+    data[,4] = round(data[,4], 1)
+    data$mean = ifelse(abs(data$mean) < 100, data$mean, NA)
+    data = na.omit(data)
+  }
+  
+  data[,4] = round(data[,4], 3)
+  
+  return(data)
+}
+```
+
+```{r, cache=TRUE, echo=FALSE}
+# Landsat 5 -------------------------------------------------------
+
+# percent error ndvi
+L5_4235_may = process("tables/L5/L5_05_4235.csv")
+L5_4334_may = process("tables/L5/L5_05_4334.csv")
+L5_4433_may = process("tables/L5/L5_05_4433.csv")
+
+L5_4235_jun = process("tables/L5/L5_06_4235.csv")
+L5_4334_jun = process("tables/L5/L5_06_4334.csv")
+L5_4433_jun = process("tables/L5/L5_06_4433.csv")
+
+L5_4235_jul = process("tables/L5/L5_07_4235.csv")
+L5_4334_jul = process("tables/L5/L5_07_4334.csv")
+L5_4433_jul = process("tables/L5/L5_07_4433.csv")
+
+# absolute difference 
+L5_4235_d_may = process("tables/L5/L5_05_4235_diff.csv", diff=TRUE)
+L5_4334_d_may = process("tables/L5/L5_05_4334_diff.csv", diff=TRUE)
+L5_4433_d_may = process("tables/L5/L5_05_4433_diff.csv", diff=TRUE)
+
+L5_4235_d_jun = process("tables/L5/L5_06_4235_diff.csv", diff=TRUE)
+L5_4334_d_jun = process("tables/L5/L5_06_4334_diff.csv", diff=TRUE)
+L5_4433_d_jun = process("tables/L5/L5_06_4433_diff.csv", diff=TRUE)
+
+L5_4235_d_jul = process("tables/L5/L5_07_4235_diff.csv", diff=TRUE)
+L5_4334_d_jul = process("tables/L5/L5_07_4334_diff.csv", diff=TRUE)
+L5_4433_d_jul = process("tables/L5/L5_07_4433_diff.csv", diff=TRUE)
+```
+
+```{r, cache=TRUE, echo=FALSE}
+# Landsat 7 -------------------------------------------------------
+
+# percent error ndvi
+L7_4235_may = process("tables/L7/L7_05_4235.csv")
+L7_4334_may = process("tables/L7/L7_05_4334.csv")
+L7_4433_may = process("tables/L7/L7_05_4433.csv")
+
+L7_4235_jun = process("tables/L7/L7_06_4235.csv")
+L7_4334_jun = process("tables/L7/L7_06_4334.csv")
+L7_4433_jun = process("tables/L7/L7_06_4433.csv")
+
+L7_4235_jul = process("tables/L7/L7_07_4235.csv")
+L7_4334_jul = process("tables/L7/L7_07_4334.csv")
+L7_4433_jul = process("tables/L7/L7_07_4433.csv")
+
+# absolute difference 
+L7_4235_d_may = process("tables/L7/L7_05_4235_diff.csv", diff=TRUE)
+L7_4334_d_may = process("tables/L7/L7_05_4334_diff.csv", diff=TRUE)
+L7_4433_d_may = process("tables/L7/L7_05_4433_diff.csv", diff=TRUE)
+
+L7_4235_d_jun = process("tables/L7/L7_06_4235_diff.csv", diff=TRUE)
+L7_4334_d_jun = process("tables/L7/L7_06_4334_diff.csv", diff=TRUE)
+L7_4433_d_jun = process("tables/L7/L7_06_4433_diff.csv", diff=TRUE)
+
+L7_4235_d_jul = process("tables/L7/L7_07_4235_diff.csv", diff=TRUE)
+L7_4334_d_jul = process("tables/L7/L7_07_4334_diff.csv", diff=TRUE)
+L7_4433_d_jul = process("tables/L7/L7_07_4433_diff.csv", diff=TRUE)
+```
+
+```{r, cache=TRUE, echo=FALSE}
+# Landsat 8 -------------------------------------------------------
+
+# percent error ndvi
+L8_4235_may = process("tables/L8/L8_05_4235.csv")
+L8_4334_may = process("tables/L8/L8_05_4334.csv")
+L8_4433_may = process("tables/L8/L8_05_4433.csv")
+
+L8_4235_jun = process("tables/L8/L8_06_4235.csv")
+L8_4334_jun = process("tables/L8/L8_06_4334.csv")
+L8_4433_jun = process("tables/L8/L8_06_4433.csv")
+
+L8_4235_jul = process("tables/L8/L8_07_4235.csv")
+L8_4334_jul = process("tables/L8/L8_07_4334.csv")
+L8_4433_jul = process("tables/L8/L8_07_4433.csv")
+
+# absolute difference 
+L8_4235_d_may = process("tables/L8/L8_05_4235_diff.csv", diff=TRUE)
+L8_4334_d_may = process("tables/L8/L8_05_4334_diff.csv", diff=TRUE)
+L8_4433_d_may = process("tables/L8/L8_05_4433_diff.csv", diff=TRUE)
+
+L8_4235_d_jun = process("tables/L8/L8_06_4235_diff.csv", diff=TRUE)
+L8_4334_d_jun = process("tables/L8/L8_06_4334_diff.csv", diff=TRUE)
+L8_4433_d_jun = process("tables/L8/L8_06_4433_diff.csv", diff=TRUE)
+
+L8_4235_d_jul = process("tables/L8/L8_07_4235_diff.csv", diff=TRUE)
+L8_4334_d_jul = process("tables/L8/L8_07_4334_diff.csv", diff=TRUE)
+L8_4433_d_jul = process("tables/L8/L8_07_4433_diff.csv", diff=TRUE)
+```
+
+```{r, cache=TRUE, echo=FALSE}
+# Landsat 8 TOA ------------------------------------------------------
+
+# percent error ndvi
+L8_4235_mayT = process("tables/L8TOA/L8_TOA_05_4235.csv")
+L8_4334_mayT = process("tables/L8TOA/L8_TOA_05_4334.csv")
+L8_4433_mayT = process("tables/L8TOA/L8_TOA_05_4433.csv")
+
+L8_4235_junT = process("tables/L8TOA/L8_TOA_06_4235.csv")
+L8_4334_junT = process("tables/L8TOA/L8_TOA_06_4334.csv")
+L8_4433_junT = process("tables/L8TOA/L8_TOA_06_4433.csv")
+
+L8_4235_julT = process("tables/L8TOA/L8_TOA_07_4235.csv")
+L8_4334_julT = process("tables/L8TOA/L8_TOA_07_4334.csv")
+L8_4433_julT = process("tables/L8TOA/L8_TOA_07_4433.csv")
+
+# absolute difference 
+L8_4235_d_mayT = process("tables/L8TOA/L8_TOA_05_4235_diff.csv", diff=TRUE)
+L8_4334_d_mayT = process("tables/L8TOA/L8_TOA_05_4334_diff.csv", diff=TRUE)
+L8_4433_d_mayT = process("tables/L8TOA/L8_TOA_05_4433_diff.csv", diff=TRUE)
+
+L8_4235_d_junT = process("tables/L8TOA/L8_TOA_06_4235_diff.csv", diff=TRUE)
+L8_4334_d_junT = process("tables/L8TOA/L8_TOA_06_4334_diff.csv", diff=TRUE)
+L8_4433_d_junT = process("tables/L8TOA/L8_TOA_06_4433_diff.csv", diff=TRUE)
+
+L8_4235_d_julT = process("tables/L8TOA/L8_TOA_07_4235_diff.csv", diff=TRUE)
+L8_4334_d_julT = process("tables/L8TOA/L8_TOA_07_4334_diff.csv", diff=TRUE)
+L8_4433_d_julT = process("tables/L8TOA/L8_TOA_07_4433_diff.csv", diff=TRUE)
+```
+
+```{r, cache=TRUE, echo=FALSE}
+# Sentinel-2A (L8 Coeff) ------------------------------------------------
+
+# percent error ndvi
+S2A_4235_may = process("tables/Sent2a/S2A_05_11SKV.csv")
+S2A_4334_may = process("tables/Sent2a/S2A_05_10SFG.csv")
+S2A_4433_may = process("tables/Sent2a/S2A_05_10SEJ.csv")
+
+S2A_4235_jun = process("tables/Sent2a/S2A_06_11SKV.csv")
+S2A_4334_jun = process("tables/Sent2a/S2A_06_10SFG.csv")
+S2A_4433_jun = process("tables/Sent2a/S2A_06_10SEJ.csv")
+
+S2A_4235_jul = process("tables/Sent2a/S2A_07_11SKV.csv")
+S2A_4334_jul = process("tables/Sent2a/S2A_07_10SFG.csv")
+S2A_4433_jul = process("tables/Sent2a/S2A_07_10SEJ.csv")
+
+# absolute difference 
+S2A_4235_d_may = process("tables/Sent2a/S2A_05_11SKV_diff.csv", diff=TRUE)
+S2A_4334_d_may = process("tables/Sent2a/S2A_05_10SFG_diff.csv", diff=TRUE)
+S2A_4433_d_may = process("tables/Sent2a/S2A_05_10SEJ_diff.csv", diff=TRUE)
+
+S2A_4235_d_jun = process("tables/Sent2a/S2A_06_11SKV_diff.csv", diff=TRUE)
+S2A_4334_d_jun = process("tables/Sent2a/S2A_06_10SFG_diff.csv", diff=TRUE)
+S2A_4433_d_jun = process("tables/Sent2a/S2A_06_10SEJ_diff.csv", diff=TRUE)
+
+S2A_4235_d_jul = process("tables/Sent2a/S2A_07_11SKV_diff.csv", diff=TRUE)
+S2A_4334_d_jul = process("tables/Sent2a/S2A_07_10SFG_diff.csv", diff=TRUE)
+S2A_4433_d_jul = process("tables/Sent2a/S2A_07_10SEJ_diff.csv", diff=TRUE)
+```
+
+
+***
+### Data Exploration {-}
+
+For the Landsat scenes we will be investigating the percent error when calculating NDVI using Tasumi algorithm when compared to the LEDAPS model. Each section will visually illustrates the percentage error per pixel for three different Landsat tiles May-June respectively. Section I will consist of Landsat 5 data, section II of Landsat 7, section III of Landsat 8, and section IV of Sentinel-2A. The WGS tiles that are included in this analysis are 4235, 4334, and 4433. The MGRS equivalents for Sentinel-2A are 11SKV, 10SFG, and 10SEJ. Each tile has been crop masked so that the information included only encompasses relevant NDVI data. 
+
+The percent error density plots below show the distribution of error values for all errors within the masked field boundary. Errors are calculated relative to NDVI from Tier 1 Landsat 8 surface reflectances. The histograms depict these errors as they occur while the density plots highlight the distribution of the absolute values of these errors. In contrast to the percent error visuals, the direct ndvi differences are also calculated and reported similarly below. Combined these allow for a better interpretation of the system-wide performance of TACA.
+
+***Key Equations-*** 
+
+% Error: (Tas-LEDAPS) / Tas) * 100
+
+Difference Error: Tas-LEDAPS
+
+```{r, echo=FALSE}
+tplot = function (may, june, july, tile, days, year) {
+  par(mfrow=c(2,3))
+  
+  hist(may, col="tan1", main=paste0(tile, ": May ", days[1], ", ", year), xlab="% Error", xlim=c(-100,100), breaks=100)
+  hist(june, col="steelblue2", main=paste0(tile, ": June ", days[2], ", ", year), xlab="% Error", xlim=c(-100,100), breaks=100)
+  hist(july, col="tomato2", main=paste0(tile, ": July ", days[3], ", ", year), xlab="% Error", xlim=c(-100,100), breaks=100)
+  
+  plot(density(abs(may)), col="tan1", lwd=2.5, main=paste0(tile, ": May ", days[1], ", ", year), xlab="% Error", xlim=c(0,25))
+  grid()
+  
+  plot(density(abs(june)), col="steelblue2", lwd=2.5, main=paste0(tile, ": June ", days[2], ", ", year), xlab="% Error", xlim=c(0,25))
+  grid()
+  
+  plot(density(abs(july)), col="tomato2", lwd=2.5, main=paste0(tile, ": July ", days[3], ", ", year), xlab="% Error", xlim=c(0,25))
+  grid()
+}
+```
+
+```{r, echo=FALSE}
+dplot = function (may, june, july, tile, days, year) {
+  par(mfrow=c(2,3))
+  
+  hist(may, col="tan1", main=paste0(tile, ": May ", days[1], ", ", year), xlab="NDVI Difference", xlim=c(-1,1))
+  hist(june, col="steelblue2", main=paste0(tile, ": June ", days[2], ", ", year), xlab="NDVI Difference", xlim=c(-1,1))
+  hist(july, col="tomato2", main=paste0(tile, ": July ", days[3], ", ", year), xlab="NDVI Difference", xlim=c(-1,1))
+  
+  plot(density(abs(may)), col="tan1", lwd=2.5, main=paste0(tile, ": May ", days[1], ", ", year), xlab="NDVI Difference", xlim=c(0,.55))
+  grid()
+  
+  plot(density(abs(june)), col="steelblue2", lwd=2.5, main=paste0(tile, ": June ", days[2], ", ", year), xlab="NDVI Difference", xlim=c(0,.55))
+  grid()
+  
+  plot(density(abs(july)), col="tomato2", lwd=2.5, main=paste0(tile, ": July ", days[3], ", ", year), xlab="NDVI Difference", xlim=c(0,.55))
+  grid()
+}
+```
+
+***
+#### Section I {-}
+
+This section will focus on Landsat 5. As this satellite was decommissioned in 2013 with a running lifespan of 27 years, it has well cataloged referenced data which was why it was included in this analysis. The dates span between May and June for 2010.
+
+<center> <h1> 42-35 </h1> </center>
+
+```{r, out.width = "300px", fig.align="center", fig.cap="Geographic reference for path row 42-35.", echo=FALSE, fig.show='hold'}
+knitr::include_graphics(c("graphics/4235.PNG", "graphics/4235_ndvi.PNG","graphics/4235_g.PNG"))
+```
+
+***
+#### Percentage Error {-}
+
+```{r, fig.align="center", fig.width=14, fig.height=8, fig.cap="Landsat 5 (4235) quantitative analysis ndvi error.", echo=FALSE}
+days = c(12,29,15)
+tplot(L5_4235_may$mean, L5_4235_jun$mean, L5_4235_jul$mean, 4235, days, 2010)
+``` 
+
+<i>Average absolute error: </i> ***`r round(mean(abs(as.vector(cbind(c(L5_4235_may$mean, L5_4235_jun$mean, L5_4235_jul$mean))))), 2)`%*** 
+
+<i>Total percentage less than 5% error: </i> ***`r round(mean(abs(as.vector(cbind(c(L5_4235_may$mean, L5_4235_jun$mean, L5_4235_jul$mean)))) < 5)*100, 2)`%*** 
+
+<i>Total percentage less than 10% error: </i> ***`r round(mean(abs(as.vector(cbind(c(L5_4235_may$mean, L5_4235_jun$mean, L5_4235_jul$mean)))) < 10)*100, 2)`%*** 
+
+***
+#### Difference Error {-}
+
+```{r, fig.align="center", fig.cap="Landsat 5 (4235) quantitative analysis ndvi difference error.", fig.width=14, fig.height=8, echo=FALSE}
+days = c(12,29,15)
+dplot(L5_4235_d_may$mean, L5_4235_d_jun$mean, L5_4235_d_jul$mean, 4235, days, 2010)
+``` 
+
+<i>Average absolute difference: </i> ***`r round(mean(abs(as.vector(cbind(c(L5_4235_d_may$mean, L5_4235_d_jun$mean, L5_4235_d_jul$mean))))), 2)`***
+
+<i>Difference of 0.1 or less: </i> ***`r round(mean(abs(as.vector(cbind(c(L5_4235_d_may$mean, L5_4235_d_jun$mean, L5_4235_d_jul$mean)))) < .1)*100, 2)`%*** 
+
+***
+<center> <h1> 43-34 </h1> </center>
+
+```{r, out.width = "300px", fig.align="center", fig.cap="Geographic reference for path row 43-34.", echo=FALSE, fig.show='hold'}
+knitr::include_graphics(c("graphics/4334.PNG", "graphics/4334_ndvi.PNG","graphics/4334_g.PNG"))
+```
+
+***
+#### Percentage Error {-} 
+
+```{r, fig.align="center", fig.width=14, fig.height=8, fig.cap="Landsat 5 (4334) quantitative analysis ndvi error.", echo=FALSE}
+days = c(3,20,22)
+tplot(L5_4334_may$mean, L5_4334_jun$mean, L5_4334_jul$mean, 4334, days, 2010)
+``` 
+
+<i>Average absolute error: </i> ***`r round(mean(abs(as.vector(cbind(c(L5_4334_may$mean, L5_4334_jun$mean, L5_4334_jul$mean))))), 2)`%*** 
+
+<i>Total percentage less than 5% error: </i> ***`r round(mean(abs(as.vector(cbind(c(L5_4334_may$mean, L5_4334_jun$mean, L5_4334_jul$mean)))) < 5)*100, 2)`%*** 
+
+<i>Total percentage less than 10% error: </i> ***`r round(mean(abs(as.vector(cbind(c(L5_4334_may$mean, L5_4334_jun$mean, L5_4334_jul$mean)))) < 10)*100, 2)`%*** 
+
+***
+#### Difference Error {-}
+
+```{r, fig.align="center", fig.cap="Landsat 5 (4334) quantitative analysis ndvi difference error.", fig.width=14, fig.height=8, echo=FALSE}
+days = c(3,20,22)
+dplot(L5_4334_d_may$mean, L5_4334_d_jun$mean, L5_4334_d_jul$mean, 4334, days, 2010)
+``` 
+
+<i>Average absolute difference: </i> ***`r round(mean(abs(as.vector(cbind(c(L5_4334_d_may$mean, L5_4334_d_jun$mean, L5_4334_d_jul$mean))))), 2)`***
+
+<i>Difference of 0.1 or less: </i> ***`r round(mean(abs(as.vector(cbind(c(L5_4334_d_may$mean, L5_4334_d_jun$mean, L5_4334_d_jul$mean)))) < .1)*100, 2)`%*** 
+
+***
+<center> <h1> 44-33 </h1> </center>
+
+```{r, out.width = "300px", fig.align="center", fig.cap="Geographic reference for path row 44-33.", echo=FALSE, fig.show='hold'}
+knitr::include_graphics(c("graphics/4433.PNG", "graphics/4433_ndvi.PNG","graphics/4433_g.PNG"))
+```
+
+***
+#### Percentage Error {-}
+
+```{r, fig.align="center", fig.width=14, fig.height=8, fig.cap="Landsat 5 (4433) quantitative analysis ndvi error.", echo=FALSE}
+days = c(26,27,29)
+tplot(L5_4433_may$mean, L5_4433_jun$mean, L5_4433_jul$mean, 4433, days, 2010)
+``` 
+
+<i>Average absolute error: </i> ***`r round(mean(abs(as.vector(cbind(c(L5_4433_may$mean, L5_4433_jun$mean, L5_4433_jul$mean))))), 2)`%*** 
+
+<i>Total percentage less than 5% error: </i> ***`r round(mean(abs(as.vector(cbind(c(L5_4433_may$mean, L5_4433_jun$mean, L5_4433_jul$mean)))) < 5)*100, 2)`%*** 
+
+<i>Total percentage less than 10% error: </i> ***`r round(mean(abs(as.vector(cbind(c(L5_4433_may$mean, L5_4433_jun$mean, L5_4433_jul$mean)))) < 10)*100, 2)`%*** 
+
+***
+#### Difference Error {-}
+
+```{r, fig.align="center", fig.cap="Landsat 5 (4433) quantitative analysis ndvi difference error.", fig.width=14, fig.height=8, echo=FALSE}
+days = c(26,27,29)
+dplot(L5_4433_d_may$mean, L5_4433_d_jun$mean, L5_4433_d_jul$mean, 4433, days, 2010)
+``` 
+
+<i>Average absolute difference: </i> ***`r round(mean(abs(as.vector(cbind(c(L5_4433_d_may$mean, L5_4433_d_jun$mean, L5_4433_d_jul$mean))))), 2)`***
+
+<i>Difference of 0.1 or less: </i> ***`r round(mean(abs(as.vector(cbind(c(L5_4433_d_may$mean, L5_4433_d_jun$mean, L5_4433_d_jul$mean)))) < .1)*100, 2)`%*** 
+
+*** 
+#### Landsat 5 Summary {-}
+
+The highest errors occurred in May for tile 44-33. Investigation into this satellite observation clarifies that this deviation is due to intense cloud cover. The net average error across the analysis for Landsat 5 is ***`r round(mean(abs(as.vector(cbind(c(L5_4235_may$mean, L5_4235_jun$mean, L5_4235_jul$mean, L5_4334_may$mean, L5_4334_jun$mean, L5_4334_jul$mean, L5_4433_may$mean, L5_4433_jun$mean, L5_4433_jul$mean))))), 2)`%***.   
+
+```{r, out.width = "300px", fig.align="center", fig.cap="Tile and NDVI for 44-33 on May 26, 2010.", echo=FALSE, fig.show='hold'}
+knitr::include_graphics(c("graphics/L5_4433.PNG", "graphics/L5_4433_ndvi.PNG"))
+```
+
+```{r, fig.align="center", fig.cap="Landsat 5 summary plot.", fig.width=14, fig.height=8, echo=FALSE}
+plot(density(abs(L5_4235_may$mean)), col="steelblue1", lwd=2.5, main="Landsat 5 Percent Error Nona Density", xlab="% Error", xlim=c(0,15), ylim=c(0,.76))
+lines(density(abs(L5_4235_jun$mean)), col="steelblue2", lwd=2.5)
+lines(density(abs(L5_4235_jul$mean)), col="steelblue3", lwd=2.5)
+
+lines(density(abs(L5_4334_may$mean)), col="tan1", lwd=2.5)
+lines(density(abs(L5_4334_jun$mean)), col="tan2", lwd=2.5)
+lines(density(abs(L5_4334_jul$mean)), col="tan3", lwd=2.5)
+
+lines(density(abs(L5_4433_may$mean)), col="tomato1", lwd=2.5)
+lines(density(abs(L5_4433_jun$mean)), col="tomato2", lwd=2.5)
+lines(density(abs(L5_4433_jul$mean)), col="tomato3", lwd=2.5)
+
+legend("topright", legend=c("4235 May","4235 June","4235 July","4334 May","4334 June","4334 July","4433 May","4433 June","4433 July"), col=c("steelblue1","steelblue2","steelblue3","tan1","tan2","tan3","tomato1","tomato2","tomato3"), pch=16, xpd=TRUE, bty="n")
+grid()
+``` 
+
+*** 
+#### Section II {-}
+
+This section will focus on Landsat 7. As this satellite is currently active and will be decommissioned in 2020, which is why it was included in this analysis. The dates span between May and June for 2013. 
+
+<center> <h1> 42-35 </h1> </center>
+
+```{r, out.width = "300px", fig.align="center", fig.cap="Geographic reference for path row 42-35.", echo=FALSE, fig.show='hold'}
+knitr::include_graphics(c("graphics/4235.PNG", "graphics/4235_ndvi.PNG","graphics/4235_g.PNG"))
+```
+
+***
+#### Percentage Error {-} 
+
+```{r, fig.align="center", fig.width=14, fig.height=8, fig.cap="Landsat 7 (4235) quantitative analysis ndvi error.", echo=FALSE}
+days = c(12,13,15)
+tplot(L7_4235_may$mean, L7_4235_jun$mean, L7_4235_jul$mean, 4235, days, 2013)
+``` 
+
+<i>Average absolute error: </i> ***`r round(mean(abs(as.vector(cbind(c(L7_4235_may$mean, L7_4235_jun$mean, L7_4235_jul$mean))))), 2)`%*** 
+
+<i>Total percentage less than 5% error: </i> ***`r round(mean(abs(as.vector(cbind(c(L7_4235_may$mean, L7_4235_jun$mean, L7_4235_jul$mean)))) < 5)*100, 2)`%*** 
+
+<i>Total percentage less than 10% error: </i> ***`r round(mean(abs(as.vector(cbind(c(L7_4235_may$mean, L7_4235_jun$mean, L7_4235_jul$mean)))) < 10)*100, 2)`%*** 
+
+***
+#### Difference Error {-}
+
+```{r, fig.align="center", fig.cap="Landsat 7 (4235) quantitative analysis ndvi difference error.", fig.width=14, fig.height=8, echo=FALSE}
+days = c(12,13,15)
+dplot(L7_4235_d_may$mean, L7_4235_d_jun$mean, L7_4235_d_jul$mean, 4235, days, 2013)
+``` 
+
+<i>Average absolute difference: </i> ***`r round(mean(abs(as.vector(cbind(c(L7_4235_d_may$mean, L7_4235_d_jun$mean, L7_4235_d_jul$mean))))), 2)`***
+
+<i>Difference of 0.1 or less: </i> ***`r round(mean(abs(as.vector(cbind(c(L7_4235_d_may$mean, L7_4235_d_jun$mean, L7_4235_d_jul$mean)))) < .1)*100, 2)`%*** 
+
+***
+<center> <h1> 43-34 </h1> </center>
+
+```{r, out.width = "300px", fig.align="center", fig.cap="Geographic reference for path row 43-34.", echo=FALSE, fig.show='hold'}
+knitr::include_graphics(c("graphics/4334.PNG", "graphics/4334_ndvi.PNG","graphics/4334_g.PNG"))
+```
+
+***
+#### Percentage Error {-} 
+
+```{r, fig.align="center", fig.width=14, fig.height=8, fig.cap="Landsat 7 (4334) quantitative analysis ndvi error.", echo=FALSE}
+days = c(3,4,6)
+tplot(L7_4334_may$mean, L7_4334_jun$mean, L7_4334_jul$mean, 4334, days, 2013)
+``` 
+
+<i>Average absolute error: </i> ***`r round(mean(abs(as.vector(cbind(c(L7_4334_may$mean, L7_4334_jun$mean, L7_4334_jul$mean))))), 2)`%*** 
+
+<i>Total percentage less than 5% error: </i> ***`r round(mean(abs(as.vector(cbind(c(L7_4334_may$mean, L7_4334_jun$mean, L7_4334_jul$mean)))) < 5)*100, 2)`%*** 
+
+<i>Total percentage less than 10% error: </i> ***`r round(mean(abs(as.vector(cbind(c(L7_4334_may$mean, L7_4334_jun$mean, L7_4334_jul$mean)))) < 10)*100, 2)`%*** 
+
+***
+#### Difference Error {-}
+
+```{r, fig.align="center", fig.cap="Landsat 7 (4334) quantitative analysis ndvi difference error.", fig.width=14, fig.height=8, echo=FALSE}
+days = c(3,4,6)
+dplot(L7_4334_d_may$mean, L7_4334_d_jun$mean, L7_4334_d_jul$mean, 4334, days, 2013)
+``` 
+
+<i>Average absolute difference: </i> ***`r round(mean(abs(as.vector(cbind(c(L7_4334_d_may$mean, L7_4334_d_jun$mean, L7_4334_d_jul$mean))))), 2)`***
+
+<i>Difference of 0.1 or less: </i> ***`r round(mean(abs(as.vector(cbind(c(L7_4334_d_may$mean, L7_4334_d_jun$mean, L7_4334_d_jul$mean)))) < .1)*100, 2)`%*** 
+
+***
+<center> <h1> 44-33 </h1> </center>
+
+```{r, out.width = "300px", fig.align="center", fig.cap="Geographic reference for path row 44-33.", echo=FALSE, fig.show='hold'}
+knitr::include_graphics(c("graphics/4433.PNG", "graphics/4433_ndvi.PNG","graphics/4433_g.PNG"))
+```
+
+***
+#### Percentage Error {-} 
+
+```{r, fig.align="center", fig.width=14, fig.height=8, fig.cap="Landsat 7 (4433) quantitative analysis ndvi error.", echo=FALSE}
+days = c(10,11,13)
+tplot(L7_4433_may$mean, L7_4433_jun$mean, L7_4433_jul$mean, 4433, days, 2013)
+``` 
+
+<i>Average absolute error: </i> ***`r round(mean(abs(as.vector(cbind(c(L7_4433_may$mean, L7_4433_jun$mean, L7_4433_jul$mean))))), 2)`%*** 
+
+<i>Total percentage less than 5% error: </i> ***`r round(mean(abs(as.vector(cbind(c(L7_4433_may$mean, L7_4433_jun$mean, L7_4433_jul$mean)))) < 5)*100, 2)`%*** 
+
+<i>Total percentage less than 10% error: </i> ***`r round(mean(abs(as.vector(cbind(c(L7_4433_may$mean, L7_4433_jun$mean, L7_4433_jul$mean)))) < 10)*100, 2)`%*** 
+
+***
+#### Difference Error {-}
+
+```{r, fig.align="center", fig.cap="Landsat 7 (4433) quantitative analysis ndvi difference error.", fig.width=14, fig.height=8, echo=FALSE}
+days = c(10,11,13)
+dplot(L7_4433_d_may$mean, L7_4433_d_jun$mean, L7_4433_d_jul$mean, 4433, days, 2013)
+``` 
+
+<i>Average absolute difference: </i> ***`r round(mean(abs(as.vector(cbind(c(L7_4433_d_may$mean, L7_4433_d_jun$mean, L7_4433_d_jul$mean))))), 2)`***
+
+<i>Difference of 0.1 or less: </i> ***`r round(mean(abs(as.vector(cbind(c(L7_4433_d_may$mean, L7_4433_d_jun$mean, L7_4433_d_jul$mean)))) < .1)*100, 2)`%*** 
+
+*** 
+#### Landsat 7 Summary {-} 
+
+There we no anomalies when analyzing Landsat 7 and all errors were consistently low. The net average error across the analysis for Landsat 7 is ***`r round(mean(abs(as.vector(cbind(c(L7_4235_may$mean, L7_4235_jun$mean, L7_4235_jul$mean, L7_4334_may$mean, L7_4334_jun$mean, L7_4334_jul$mean, L7_4433_may$mean, L7_4433_jun$mean, L7_4433_jul$mean))))), 2)`%***. 
+
+```{r, fig.align="center", fig.cap="Landsat 7 summary plot.", fig.width=14, fig.height=8, echo=FALSE}
+plot(density(abs(L7_4235_may$mean)), col="steelblue1", lwd=2.5, main="Landsat 7 Percent Error Nona Density", xlab="% Error", xlim=c(0,15), ylim=c(0,.4))
+lines(density(abs(L7_4235_jun$mean)), col="steelblue2", lwd=2.5)
+lines(density(abs(L7_4235_jul$mean)), col="steelblue3", lwd=2.5)
+
+lines(density(abs(L7_4334_may$mean)), col="tan1", lwd=2.5)
+lines(density(abs(L7_4334_jun$mean)), col="tan2", lwd=2.5)
+lines(density(abs(L7_4334_jul$mean)), col="tan3", lwd=2.5)
+
+lines(density(abs(L7_4433_may$mean)), col="tomato1", lwd=2.5)
+lines(density(abs(L7_4433_jun$mean)), col="tomato2", lwd=2.5)
+lines(density(abs(L7_4433_jul$mean)), col="tomato3", lwd=2.5)
+
+legend("topright", legend=c("4235 May","4235 June","4235 July","4334 May","4334 June","4334 July","4433 May","4433 June","4433 July"), col=c("steelblue1","steelblue2","steelblue3","tan1","tan2","tan3","tomato1","tomato2","tomato3"), pch=16, xpd=TRUE, bty="n")
+grid()
+``` 
+
+*** 
+#### Section III {-}
+
+This section will focus on Landsat 8. As this satellite is currently active which is why it was included in this analysis. The dates span between May and June for 2016.
+
+<center> <h1> 42-35 </h1> </center>
+
+```{r, out.width = "300px", fig.align="center", fig.cap="Geographic reference for path row 42-35.", echo=FALSE, fig.show='hold'}
+knitr::include_graphics(c("graphics/4235.PNG", "graphics/4235_ndvi.PNG","graphics/4235_g.PNG"))
+```
+
+***
+#### Percentage Error {-} 
+
+```{r, fig.align="center", fig.width=14, fig.height=8, fig.cap="Landsat 8 (4235) quantitative analysis ndvi error.", echo=FALSE}
+days = c(12,3,10)
+tplot(L8_4235_may$mean, L8_4235_jun$mean, L8_4235_jul$mean, 4235, days, 2016)
+``` 
+
+<i>Average absolute error: </i> ***`r round(mean(abs(as.vector(cbind(c(L8_4235_may$mean, L8_4235_jun$mean, L8_4235_jul$mean))))), 2)`%*** 
+
+<i>Total percentage less than 5% error: </i> ***`r round(mean(abs(as.vector(cbind(c(L8_4235_may$mean, L8_4235_jun$mean, L8_4235_jul$mean)))) < 5)*100, 2)`%*** 
+
+<i>Total percentage less than 10% error: </i> ***`r round(mean(abs(as.vector(cbind(c(L8_4235_may$mean, L8_4235_jun$mean, L8_4235_jul$mean)))) < 10)*100, 2)`%*** 
+
+***
+#### Difference Error {-}
+
+```{r, fig.align="center", fig.cap="Landsat 8 (4235) quantitative analysis ndvi difference error.", fig.width=14, fig.height=8, echo=FALSE}
+days = c(12,3,10)
+dplot(L8_4235_d_may$mean, L8_4235_d_jun$mean, L8_4235_d_jul$mean, 4235, days, 2016)
+``` 
+
+<i>Average absolute difference: </i> ***`r round(mean(abs(as.vector(cbind(c(L8_4235_d_may$mean, L8_4235_d_jun$mean, L8_4235_d_jul$mean))))), 2)`***
+
+<i>Difference of 0.1 or less: </i> ***`r round(mean(abs(as.vector(cbind(c(L8_4235_d_may$mean, L8_4235_d_jun$mean, L8_4235_d_jul$mean)))) < .1)*100, 2)`%*** 
+
+***
+<center> <h1> 43-34 </h1> </center>
+
+```{r, out.width = "300px", fig.align="center", fig.cap="Geographic reference for path row 43-34.", echo=FALSE, fig.show='hold'}
+knitr::include_graphics(c("graphics/4334.PNG", "graphics/4334_ndvi.PNG","graphics/4334_g.PNG"))
+```
+
+***
+#### Percentage Error {-} 
+
+```{r, fig.align="center", fig.width=14, fig.height=8, fig.cap="Landsat 8 (4334) quantitative analysis ndvi error.", echo=FALSE}
+days = c(13,4,11)
+tplot(L8_4334_may$mean, L8_4334_jun$mean, L8_4334_jul$mean, 4334, days, 2016)
+``` 
+
+<i>Average absolute error: </i> ***`r round(mean(abs(as.vector(cbind(c(L8_4334_may$mean, L8_4334_jun$mean, L8_4334_jul$mean))))), 2)`%*** 
+
+<i>Total percentage less than 5% error: </i> ***`r round(mean(abs(as.vector(cbind(c(L8_4334_may$mean, L8_4334_jun$mean, L8_4334_jul$mean)))) < 5)*100, 2)`%*** 
+
+<i>Total percentage less than 10% error: </i> ***`r round(mean(abs(as.vector(cbind(c(L8_4334_may$mean, L8_4334_jun$mean, L8_4334_jul$mean)))) < 10)*100, 2)`%*** 
+
+***
+#### Difference Error {-}
+
+```{r, fig.align="center", fig.cap="Landsat 8 (4334) quantitative analysis ndvi difference error.", fig.width=14, fig.height=8, echo=FALSE}
+days = c(13,4,11)
+dplot(L8_4334_d_may$mean, L8_4334_d_jun$mean, L8_4334_d_jul$mean, 4334, days, 2016)
+``` 
+
+<i>Average absolute difference: </i> ***`r round(mean(abs(as.vector(cbind(c(L8_4334_d_may$mean, L8_4334_d_jun$mean, L8_4334_d_jul$mean))))), 2)`***
+
+<i>Difference of 0.1 or less: </i> ***`r round(mean(abs(as.vector(cbind(c(L8_4334_d_may$mean, L8_4334_d_jun$mean, L8_4334_d_jul$mean)))) < .1)*100, 2)`%*** 
+
+***
+<center> <h1> 44-33 </h1> </center>
+
+```{r, out.width = "300px", fig.align="center", fig.cap="Geographic reference for path row 44-33.", echo=FALSE, fig.show='hold'}
+knitr::include_graphics(c("graphics/4433.PNG", "graphics/4433_ndvi.PNG","graphics/4433_g.PNG"))
+```
+
+***
+#### Percentage Error {-} 
+
+```{r, fig.align="center", fig.width=14, fig.height=8, fig.cap="Landsat 8 (4433) quantitative analysis ndvi error.", echo=FALSE}
+days = c(15,6,13)
+tplot(L8_4433_may$mean, L8_4433_jun$mean, L8_4433_jul$mean, 4433, days, 2016)
+``` 
+
+<i>Average absolute error: </i> ***`r round(mean(abs(as.vector(cbind(c(L8_4433_may$mean, L8_4433_jun$mean, L8_4433_jul$mean))))), 2)`%*** 
+
+<i>Total percentage less than 5% error: </i> ***`r round(mean(abs(as.vector(cbind(c(L8_4433_may$mean, L8_4433_jun$mean, L8_4433_jul$mean)))) < 5)*100, 2)`%*** 
+
+<i>Total percentage less than 10% error: </i> ***`r round(mean(abs(as.vector(cbind(c(L8_4433_may$mean, L8_4433_jun$mean, L8_4433_jul$mean)))) < 10)*100, 2)`%*** 
+
+***
+#### Difference Error {-}
+
+```{r, fig.align="center", fig.cap="Landsat 8 (4433) quantitative analysis ndvi difference error.", fig.width=14, fig.height=8, echo=FALSE}
+days = c(15,6,13)
+dplot(L8_4433_d_may$mean, L8_4433_d_jun$mean, L8_4433_d_jul$mean, 4433, days, 2016)
+``` 
+
+<i>Average absolute difference: </i> ***`r round(mean(abs(as.vector(cbind(c(L8_4433_d_may$mean, L8_4433_d_jun$mean, L8_4433_d_jul$mean))))), 2)`***
+
+<i>Difference of 0.1 or less: </i> ***`r round(mean(abs(as.vector(cbind(c(L8_4433_d_may$mean, L8_4433_d_jun$mean, L8_4433_d_jul$mean)))) < .1)*100, 2)`%*** 
+
+*** 
+#### Landsat 8 Summary {-} 
+
+The highest error occurred in June for tile 43-34. Investigation into the image shows that this deviation is due to intense cloud cover. The net average error across the analysis for Landsat 8 is ***`r round(mean(abs(as.vector(cbind(c(L8_4235_may$mean, L8_4235_jun$mean, L8_4235_jul$mean, L8_4334_may$mean, L8_4334_jun$mean, L8_4334_jul$mean, L8_4433_may$mean, L8_4433_jun$mean, L8_4433_jul$mean))))), 2)`%***. 
+
+```{r, out.width = "300px", fig.align="center", fig.cap="Tile and NDVI for 43-34 on June 4, 2016.", echo=FALSE, fig.show='hold'}
+knitr::include_graphics(c("graphics/L8_4334.PNG", "graphics/L8_4334_ndvi.PNG"))
+```
+
+```{r, fig.align="center", fig.cap="Landsat 8 summary plot.", fig.width=14, fig.height=8, echo=FALSE}
+plot(density(abs(L8_4235_may$mean)), col="steelblue1", lwd=2.5, main="Landsat 8 Percent Error Nona Density", xlab="% Error", xlim=c(0,15), ylim=c(0,.2))
+lines(density(abs(L8_4235_jun$mean)), col="steelblue2", lwd=2.5)
+lines(density(abs(L8_4235_jul$mean)), col="steelblue3", lwd=2.5)
+
+lines(density(abs(L8_4334_may$mean)), col="tan1", lwd=2.5)
+lines(density(abs(L8_4334_jun$mean)), col="tan2", lwd=2.5)
+lines(density(abs(L8_4334_jul$mean)), col="tan3", lwd=2.5)
+
+lines(density(abs(L8_4433_may$mean)), col="tomato1", lwd=2.5)
+lines(density(abs(L8_4433_jun$mean)), col="tomato2", lwd=2.5)
+lines(density(abs(L8_4433_jul$mean)), col="tomato3", lwd=2.5)
+
+legend("topright", legend=c("4235 May","4235 June","4235 July","4334 May","4334 June","4334 July","4433 May","4433 June","4433 July"), col=c("steelblue1","steelblue2","steelblue3","tan1","tan2","tan3","tomato1","tomato2","tomato3"), pch=16, xpd=TRUE, bty="n")
+grid()
+``` 
+
+
+*** 
+#### Section IV {-}
+
+This section will focus on Sentinel-2A using Landsat 8 Coefficients for the TACA correction. 
+
+<center> <h1> 11SKV </h1> </center>
+
+```{r, out.width = "300px", fig.align="center", fig.cap="Geographic reference for MGRS 11SKV.", echo=FALSE, fig.show='hold'}
+knitr::include_graphics(c("graphics/4235.PNG", "graphics/4235_ndvi.PNG","graphics/4235_g.PNG"))
+```
+
+***
+#### Percentage Error {-}
+
+```{r, fig.align="center", fig.width=14, fig.height=8, fig.cap="Sentinel-2A (11SKV) quantitative analysis ndvi error.", echo=FALSE}
+days = c(2,5,5)
+tplot(S2A_4235_may$mean, S2A_4235_jun$mean, S2A_4235_jul$mean, "11SKV", days, 2018)
+``` 
+
+<i>Average absolute error: </i> ***`r round(mean(abs(as.vector(cbind(c(S2A_4235_may$mean, S2A_4235_jun$mean, S2A_4235_jul$mean))))), 2)`%*** 
+
+<i>Total percentage less than 5% error: </i> ***`r round(mean(abs(as.vector(cbind(c(S2A_4235_may$mean, S2A_4235_jun$mean, S2A_4235_jul$mean)))) < 5)*100, 2)`%*** 
+
+<i>Total percentage less than 10% error: </i> ***`r round(mean(abs(as.vector(cbind(c(S2A_4235_may$mean, S2A_4235_jun$mean, S2A_4235_jul$mean)))) < 10)*100, 2)`%*** 
+
+***
+#### Difference Error {-}
+
+```{r, fig.align="center", fig.cap="Sentinel-2A (11SKV) quantitative analysis ndvi difference error.", fig.width=14, fig.height=8, echo=FALSE}
+days = c(2,5,5)
+dplot(S2A_4235_d_may$mean, S2A_4235_d_jun$mean, S2A_4235_d_jul$mean, "11SKV", days, 2018)
+``` 
+
+<i>Average absolute difference: </i> ***`r round(mean(abs(as.vector(cbind(c(S2A_4235_d_may$mean, S2A_4235_d_jun$mean, S2A_4235_d_jul$mean))))), 2)`***
+
+<i>Difference of 0.1 or less: </i> ***`r round(mean(abs(as.vector(cbind(c(S2A_4235_d_may$mean, S2A_4235_d_jun$mean, S2A_4235_d_jul$mean)))) < .1)*100, 2)`%*** 
+
+***
+<center> <h1> 10SFG </h1> </center>
+
+```{r, out.width = "300px", fig.align="center", fig.cap="Geographic reference for MGRS 10SFG.", echo=FALSE, fig.show='hold'}
+knitr::include_graphics(c("graphics/4334.PNG", "graphics/4334_ndvi.PNG","graphics/4334_g.PNG"))
+```
+
+***
+#### Percentage Error {-}
+
+```{r, fig.align="center", fig.width=14, fig.height=8, fig.cap="Sentinel-2A (10SFG) quantitative analysis ndvi error.", echo=FALSE}
+days = c(1,4,4)
+tplot(S2A_4334_may$mean, S2A_4334_jun$mean, S2A_4334_jul$mean, "10SFG", days, 2018)
+``` 
+
+<i>Average absolute error: </i> ***`r round(mean(abs(as.vector(cbind(c(S2A_4334_may$mean, S2A_4334_jun$mean, S2A_4334_jul$mean))))), 2)`%*** 
+
+<i>Total percentage less than 5% error: </i> ***`r round(mean(abs(as.vector(cbind(c(S2A_4334_may$mean, S2A_4334_jun$mean, S2A_4334_jul$mean)))) < 5)*100, 2)`%*** 
+
+<i>Total percentage less than 10% error: </i> ***`r round(mean(abs(as.vector(cbind(c(S2A_4334_may$mean, S2A_4334_jun$mean, S2A_4334_jul$mean)))) < 10)*100, 2)`%*** 
+
+***
+#### Difference Error {-}
+
+```{r, fig.align="center", fig.cap="Sentinel-2A (10SFG) quantitative analysis ndvi difference error.", fig.width=14, fig.height=8, echo=FALSE}
+days = c(1,4,4)
+dplot(S2A_4334_d_may$mean, S2A_4334_d_jun$mean, S2A_4334_d_jul$mean, "10SFG", days, 2018)
+``` 
+
+<i>Average absolute difference: </i> ***`r round(mean(abs(as.vector(cbind(c(S2A_4334_d_may$mean, S2A_4334_d_jun$mean, S2A_4334_d_jul$mean))))), 2)`***
+
+<i>Difference of 0.1 or less: </i> ***`r round(mean(abs(as.vector(cbind(c(S2A_4334_d_may$mean, S2A_4334_d_jun$mean, S2A_4334_d_jul$mean)))) < .1)*100, 2)`%*** 
+
+***
+<center> <h1> 10SEJ </h1> </center>
+
+```{r, out.width = "300px", fig.align="center", fig.cap="Geographic reference for MGRS 10SEJ.", echo=FALSE, fig.show='hold'}
+knitr::include_graphics(c("graphics/4433.PNG", "graphics/4433_ndvi.PNG","graphics/4433_g.PNG"))
+```
+
+***
+#### Percentage Error {-}
+
+```{r, fig.align="center", fig.width=14, fig.height=8, fig.cap="Sentinel-2A (10SEJ) quantitative analysis ndvi error.", echo=FALSE}
+days = c(6,4,4)
+tplot(S2A_4433_may$mean, S2A_4433_jun$mean, S2A_4433_jul$mean, "10SEJ", days, 2018)
+``` 
+
+<i>Average absolute error: </i> ***`r round(mean(abs(as.vector(cbind(c(S2A_4433_may$mean, S2A_4433_jun$mean, S2A_4433_jul$mean))))), 2)`%*** 
+
+<i>Total percentage less than 5% error: </i> ***`r round(mean(abs(as.vector(cbind(c(S2A_4433_may$mean, S2A_4433_jun$mean, S2A_4433_jul$mean)))) < 5)*100, 2)`%*** 
+
+<i>Total percentage less than 10% error: </i> ***`r round(mean(abs(as.vector(cbind(c(S2A_4433_may$mean, S2A_4433_jun$mean, S2A_4433_jul$mean)))) < 10)*100, 2)`%*** 
+
+***
+#### Difference Error {-}
+
+```{r, fig.align="center", fig.cap="Sentinel-2A (10SEJ) quantitative analysis ndvi difference error.", fig.width=14, fig.height=8, echo=FALSE}
+days = c(6,4,4)
+dplot(S2A_4433_d_may$mean, S2A_4433_d_jun$mean, S2A_4433_d_jul$mean, "10SEJ", days, 2018)
+``` 
+
+<i>Average absolute difference: </i> ***`r round(mean(abs(as.vector(cbind(c(S2A_4433_d_may$mean, S2A_4433_d_jun$mean, S2A_4433_d_jul$mean))))), 2)`***
+
+<i>Difference of 0.1 or less: </i> ***`r round(mean(abs(as.vector(cbind(c(S2A_4433_d_may$mean, S2A_4433_d_jun$mean, S2A_4433_d_jul$mean)))) < .1)*100, 2)`%*** 
+
+*** 
+#### Sentinel-2A Summary {-} 
+
+The highest error occurred in June for tile 10SFG. Investigation into the image shows that this deviation is due to intense cloud cover. The net average error across the analysis for Sentinel-2A is ***`r round(mean(abs(as.vector(cbind(c(S2A_4235_may$mean, S2A_4235_jun$mean, S2A_4235_jul$mean, S2A_4334_may$mean, S2A_4334_jun$mean, S2A_4334_jul$mean, S2A_4433_may$mean, S2A_4433_jun$mean, S2A_4433_jul$mean))))), 2)`%***. 
+
+```{r, out.width = "300px", fig.align="center", fig.cap="Tile and NDVI for 10SFG on May 1, 2018.", echo=FALSE, fig.show='hold'}
+knitr::include_graphics(c("graphics/L8_4334.PNG", "graphics/L8_4334_ndvi.PNG"))
+```
+
+```{r, fig.align="center", fig.cap="Sentinel-2A summary plot.", fig.width=14, fig.height=8, echo=FALSE}
+plot(density(abs(S2A_4235_may$mean)), col="steelblue1", lwd=2.5, main="Sentinel-2A Percent Error Nona Density", xlab="% Error", xlim=c(0,50), ylim=c(0,.1))
+lines(density(abs(S2A_4235_jun$mean)), col="steelblue2", lwd=2.5)
+lines(density(abs(S2A_4235_jul$mean)), col="steelblue3", lwd=2.5)
+
+lines(density(abs(S2A_4334_may$mean)), col="tan1", lwd=2.5)
+lines(density(abs(S2A_4334_jun$mean)), col="tan2", lwd=2.5)
+lines(density(abs(S2A_4334_jul$mean)), col="tan3", lwd=2.5)
+
+lines(density(abs(S2A_4433_may$mean)), col="tomato1", lwd=2.5)
+lines(density(abs(S2A_4433_jun$mean)), col="tomato2", lwd=2.5)
+lines(density(abs(S2A_4433_jul$mean)), col="tomato3", lwd=2.5)
+
+legend("topright", legend=c("11SKV May","11SKV June","11SKV July","10SFG May","10SFG June","10SFG July","10SEJ May","10SEJ June","10SEJ July"), col=c("steelblue1","steelblue2","steelblue3","tan1","tan2","tan3","tomato1","tomato2","tomato3"), pch=16, xpd=TRUE, bty="n")
+grid()
+``` 
+
+***
+#### Conclusion {-}
+
+Analyses conducted to date support the development and implementation of rapid, data-driven approaches for estimation of surface reflectance values from top of atmosphere reflectances from multiple satellites. The results from the TACA approach indicate the potential utility of rapid, automated estimation of surface reflectance values for use in applications which require latencies of less than 48 hours. This approach has the advantage of not requiring extensive ancillary data to accurately model radiative transfer processes. Although robust validations using actual ground-based measurements have not been conducted, the results of the TACA model indicate good surface reflectance estimation accuracy with an average difference in NDVI values of .01 to .03 (4.99% to 8.71%).
+
+
+***
+#### References {-}
+
+Claverie, M., Ju, J., Masek, J.G., Dungan, J.L., Vermote, E.F., Roger, J.C., Skakun, S.V. and Justice, C., 2018. The Harmonized Landsat and Sentinel-2 surface reflectance data set. Remote sensing of environment, 219, pp.145-161.
+
+Johnson, L.F., Cahn, M., Martin, F., Melton, F., Benzen, S., Farrara, B. and Post, K., 2016. Evapotranspiration-based irrigation scheduling of head lettuce and broccoli. HortScience, 51(7), pp.935-940.
+
+Tasumi, M., Allen, R.G. and Trezza, R., 2008. At-surface reflectance and albedo from satellite for operational calculation of land surface energy balance. Journal of hydrologic engineering, 13(2), pp.51-63.
+
+*** 
+
+&nbsp;
+<p style="text-align: center;">A work by <a href="https://github.com/Will-Carrara/Tasumi">Will Carrara</a></p>
+<p style="text-align: center;"><span style="color: #808080;"><em>Tasumi Atmospheric Correction Analysis</em></span></p>
+&nbsp;
