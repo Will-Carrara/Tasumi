@@ -14,7 +14,7 @@ import progressbar
 
 # This program presents a rapid, operational method for estimating at-surface reflectance. This is most
 # applicable for Landsat satellite sensors for cloud-free, low-haze, conditions with sensor view angles
-# less than 20 degrees. The data supplied to this algorithm is by Google Earth Engine.
+# less than 20 degrees. The data supplied to this algorithm is from Google Earth Engine.
 
 # initialize earth engine
 ee.Initialize()
