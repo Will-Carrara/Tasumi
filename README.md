@@ -19,6 +19,10 @@
 > * area: area in square meters of field corresponding id.
 > * mean: mean value of error at given pixel.
 >
+>
 > ### Results Preview for Landsat 8
 > ![](analysis/code/graphics/sample_images.png)
 > ![](analysis/code/graphics/sample_results.png)
+>
+>
+> For the the complete analysis please read the [report](analysis/analysis.pdf).
