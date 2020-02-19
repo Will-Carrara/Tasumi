@@ -34,9 +34,9 @@ def initialize():
 	# United States polygon region filtered by selected state
 	us_fc = ee.FeatureCollection('ft:1fRY18cjsHzDgGiJiS2nnpUU3v9JPDc2HNaR7Xk8').filter(ee.Filter.eq('Name', state))
 
-	#MGRS_TILE = '11SKV'
-	#MGRS_TILE = '10SEJ'
-	MGRS_TILE = '10SFG'
+	#MGRS_TILE = '11SKV'  # -> 42,35
+	#MGRS_TILE = '10SEJ'  # -> 43,34
+	MGRS_TILE = '10SFG'   # -> 44,33
 
 	# Sentinel 2a
 	if (satellite == 2):
@@ -176,7 +176,7 @@ def tasumi_reflectance_func(refl_toa_image):
 		# _________________________________________________________________________________|
 
 	elif (satellite == 5 or satellite == 7):
-		# Calibrated Landsat Constants LS5 ___________________________________________
+		# Calibrated Landsat Constants LS5 ____________________________________________
 		# Coeff        Band1     Band2     Band3     Band4     Band5     Band7	      |
 		c1 = ee.Image([0.987,    2.319,    0.951,    0.375,    0.234,    0.365   ]) # |
 		c2 = ee.Image([-0.00071, -0.00016, -0.00033, -0.00048, -0.00101, -0.00097]) # |
@@ -230,18 +230,27 @@ def upload(collection):
 	for i in range(collectionSize):
 		name = ee.Image(collectionList.get(i)).get('system:index').getInfo()
 
-		myTry = ee.batch.Export.image.toDrive(
-
+		if (satellite == 2):
+			myTry = ee.batch.Export.image.toDrive(
 			image = ee.Image(collectionList.get(i)).select(bnds),
 			description = 'Sent-2A July' + str(i+1),
 			scale = 30,
 			fileNamePrefix = 'T' + str(i+1) + '_' + name,
 			folder = 'Sentinel 2A July')
 
+		else:
+			myTry = ee.batch.Export.image.toDrive(
+			image = ee.Image(collectionList.get(i)).select(bnds).expression('b() * 10000'),
+			description = 'Landsat July' + str(i+1),
+			scale = 30,
+			fileNamePrefix = 'T' + str(i+1) + '_' + name,
+			folder = 'Landsat 8 July')
+
+
 		myTry.start()
 		pbar.update(i+1)
 
-	#.expression('b() * 10000') (this is for L7,L8,L5)
+	#.expression('b() * 10000') (this is for only L7,L8,L5)
 
 def main():
 
