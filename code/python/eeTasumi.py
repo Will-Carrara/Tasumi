@@ -70,8 +70,6 @@ def initialize():
 
 	refl_toa_coll = ee.ImageCollection(ee.Join.saveBest('nldas_next_match', 'nldas_next_metric').apply(refl_toa_coll, nldas_coll, nldas_next_filter))
 
-	refl_toa_coll = ee.ImageCollection(ee.Join.saveBest('nldas_next_match', 'nldas_next_metric').apply(refl_toa_coll, nldas_coll, nldas_next_filter))
-
 	'''
 	surf_coll = ee.ImageCollection('LANDSAT/LT05/C01/T1_SR') \
 		.filterDate('2010-07-01', '2010-07-31').filterBounds(us_fc) \
